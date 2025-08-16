@@ -1,0 +1,7 @@
+requests
+pytz
+beautifulsoup4
+lxml
+Flask
+line-bot-sdk==3.9.0
+gunicorn==21.2.0

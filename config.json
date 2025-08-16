@@ -1,0 +1,27 @@
+{
+  "messaging_api": {
+    "channel_access_token": "QDJgnexyskwDiH2nRQge/V0yrXMwNv2XEbFP0wQAL43ma8mgvOWcmydW9RgwE+Jxtlhj59bvppbQvoLPCoBkvzN0JuKWLWmxc1eHQ8EW9de4xYtXtUBRdc1X+o6gaznXZF9w2JqTZlCUqskqKmJaYAdB04t89/1O/w1cDnyilFU=",
+    "recipients": ["Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"]
+  },
+  "startup_ping": true,
+
+  "poll_seconds": 90,
+  "yahoo_quote_chunk": 50,
+  "batch_size": 200,
+  "cooldown_minutes": 30,
+  "once_per_day": false,
+  "macd": {"fast": 12, "slow": 26, "signal": 9, "eps": 1e-6, "macd_tf": "D"},
+  "limits": {"price_min": 20.0, "min_volume_shares": 1000000},
+  "diff_to_ma5_pct": {"min": 0.0, "max": 4.0},
+  "rules": {
+    "r1_macd_combo": true,
+    "r2_ma34_up_daily": true,
+    "r3_weekly_ma5_pattern": true,
+    "r4_daily_ma5_up": true,
+    "r5_within_0_to_4pct_of_ma5": true,
+    "r6_price_gt_20": true,
+    "r7_volume_gt_1000_lots": true,
+    "r8_price_gt_ma5": true
+  },
+  "cache_refresh_minutes": {"daily": 10, "weekly": 60}
+}
