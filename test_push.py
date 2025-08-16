@@ -1,5 +1,7 @@
 from linebot import LineBotApi
 from linebot.models import TextSendMessage
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
 
 # 把這裡換成你 LINE Developers 後台的 Channel access token (長長的一串字)
 CHANNEL_ACCESS_TOKEN = "你的ChannelAccessToken"
