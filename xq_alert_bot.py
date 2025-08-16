@@ -1,10 +1,16 @@
 # -*- coding: utf-8 -*-
+# xq_worker.py — 常駐掃描台股並用 LINE Messaging API 推播
 import os, time, json, requests, datetime
 from typing import Optional, Dict, Any, List
+
+# 你現有的工具
 from indicators import sma, macd
 from refresh_symbols_all import refresh_symbols_all
-from line_messaging_push import push_message  # ← 改成用 Messaging API 推播
 
+# 用 Messaging API 推播（先前我們做好的）
+from line_messaging_push import push_message
+
+# ---------------- Yahoo helpers ----------------
 def fetch_quote_multi(y_symbols: List[str]) -> Dict[str, Dict[str, Any]]:
     res = {}
     if not y_symbols:
@@ -76,6 +82,7 @@ def get_chart_cached(y_symbol: str, rng: str, interval: str, refresh_minutes: in
         _chart_cache[key] = ent
     return ent
 
+# ---------------- 規則 ----------------
 def r1_macd_combo(cfg, hist: List[Optional[float]]) -> Optional[str]:
     if len(hist) < 2:
         return None
@@ -144,16 +151,21 @@ def should_push(symbol: str, rule_id: str, cooldown_minutes: int, once_per_day: 
     return True
 
 def main():
+    # 讀設定
     with open("config.json","r",encoding="utf-8") as f:
         cfg = json.load(f)
 
-    # 啟動時若缺清單，試著自動更新
+    # 啟動提示（可在 config.json 設 startup_ping: true）
+    if cfg.get("startup_ping", False):
+        push_message("【啟動】XQ 全市場掃描（Render Worker）已啟動 🚀")
+
+    # 缺清單就試圖更新；失敗再要求用 twse.html/tpex.html 生成
     if not os.path.exists("symbols_all.txt"):
         try:
             n = refresh_symbols_all()
             print(f"[INFO] symbols_all.txt updated: {n} codes")
         except Exception as e:
-            print("[ERROR] 無法更新全市場清單，請先手動產生 symbols_all.txt。錯誤：", e)
+            print("[ERROR] 產生 symbols_all.txt 失敗，請先用 build_symbols_from_local.py：", e)
             return
 
     with open("symbols_all.txt","r",encoding="utf-8") as f:
@@ -168,11 +180,7 @@ def main():
     cooldown = int(cfg.get("cooldown_minutes", 30))
     once_per_day = bool(cfg.get("once_per_day", False))
 
-    # 啟動提示（可在 config.json 設 startup_ping: true）
-    if cfg.get("startup_ping", False):
-        push_message("【啟動】XQ 全市場掃描已啟動 🚀")
-
-    print(f"[INFO] 全市場 {len(y_list)} 檔；每輪 {batch_size} 檔；合併查價 chunk={chunk}。")
+    print(f"[INFO]（Worker）全市場 {len(y_list)} 檔；每輪 {batch_size} 檔；chunk={chunk}。")
 
     idx = 0
     while True:
@@ -184,11 +192,13 @@ def main():
             batch = y_list[idx: idx+batch_size]
         idx += batch_size
 
+        # 取報價
         quotes = {}
         for i in range(0, len(batch), chunk):
             group = batch[i:i+chunk]
             quotes.update(fetch_quote_multi(group))
 
+        # 計算指標 & 規則
         for ysym in batch:
             q = quotes.get(ysym, {})
             tkr = ysym.split(".")[0]
@@ -199,12 +209,15 @@ def main():
             chg = q.get("regularMarketChangePercent")
             yclose = q.get("regularMarketPreviousClose")
 
-            d_ent = get_chart_cached(ysym, rng="8mo", interval="1d", refresh_minutes=cfg["cache_refresh_minutes"]["daily"])
-            w_ent = get_chart_cached(ysym, rng="5y", interval="1wk", refresh_minutes=cfg["cache_refresh_minutes"]["weekly"])
+            d_ent = get_chart_cached(ysym, rng="8mo", interval="1d",
+                                     refresh_minutes=cfg["cache_refresh_minutes"]["daily"])
+            w_ent = get_chart_cached(ysym, rng="5y", interval="1wk",
+                                     refresh_minutes=cfg["cache_refresh_minutes"]["weekly"])
 
             ma5_d = sma(d_ent["close"], 5)
             ma34_d = sma(d_ent["close"], 34)
-            dif_d, dem_d, hist_d = macd(d_ent["close"], cfg["macd"]["fast"], cfg["macd"]["slow"], cfg["macd"]["signal"])
+            dif_d, dem_d, hist_d = macd(d_ent["close"],
+                                        cfg["macd"]["fast"], cfg["macd"]["slow"], cfg["macd"]["signal"])
             ma5_w = sma(w_ent["close"], 5)
 
             fired = []
@@ -239,8 +252,9 @@ def main():
                             f"{'；'.join(to_send)}\n"
                             f"時間：{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                     print(text)
-                    push_message(text)  # ← 改這裡：用 Messaging API 推播
+                    push_message(text)
 
+        # 節流
         wait = max(5, poll - int(time.time() - start))
         time.sleep(wait)
 
