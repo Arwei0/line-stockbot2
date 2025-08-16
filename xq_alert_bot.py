@@ -50,24 +50,34 @@ def extract_ohlcv(chart_json: Dict[str, Any]):
             quote.get("close", []),
             quote.get("volume", []))
 
-def choose_symbol_suffix_bulk(tickers: List[str]) -> Dict[str, str]:
-    out = {}
-    tw = [t + ".TW" for t in tickers]
-    resp_tw = fetch_quote_multi(tw)
-    remaining = []
-    for t in tickers:
-        y = t + ".TW"
-        if y in resp_tw:
-            out[t] = y
-        else:
-            remaining.append(t)
-    if remaining:
-        two = [t + ".TWO" for t in remaining]
-        resp_two = fetch_quote_multi(two)
-        for t in remaining:
-            y = t + ".TWO"
-            if y in resp_two:
-                out[t] = y
+def choose_symbol_suffix_bulk(tickers: List[str], chunk: int = 300) -> Dict[str, str]:
+    """
+    分段查詢 .TW / .TWO，避免 URL 太長導致整批失敗。
+    回傳 { '2330': '2330.TW', '5483': '5483.TWO', ... }
+    """
+    out: Dict[str, str] = {}
+
+    # 先試 .TW（上市）
+    for i in range(0, len(tickers), chunk):
+        seg = tickers[i:i+chunk]
+        tw_syms = [t + ".TW" for t in seg]
+        resp = fetch_quote_multi(tw_syms)  # {'2330.TW': {...}, ...}
+        for ysym in resp.keys():
+            base = ysym.split(".")[0]
+            out[base] = ysym
+
+    # 再補 .TWO（上櫃）—只查還沒判斷出的
+    remaining = [t for t in tickers if t not in out]
+    for i in range(0, len(remaining), chunk):
+        seg = remaining[i:i+chunk]
+        two_syms = [t + ".TWO" for t in seg]
+        resp = fetch_quote_multi(two_syms)
+        for ysym in resp.keys():
+            base = ysym.split(".")[0]
+            out[base] = ysym
+
+    # 診斷輸出
+    print(f"[DEBUG] 判斷 suffix：輸入 {len(tickers)} 檔 → OK {len(out)} 檔，未判斷 {len(tickers)-len(out)} 檔")
     return out
 
 _chart_cache = {}
@@ -168,11 +178,16 @@ def main():
             print("[ERROR] 產生 symbols_all.txt 失敗，請先用 build_symbols_from_local.py：", e)
             return
 
+    # 讀清單後
     with open("symbols_all.txt","r",encoding="utf-8") as f:
-        all_syms = [s.strip().split()[0] for s in f if s.strip()]
+        all_syms = [s.strip() for s in f if s.strip()]
+    print(f"[DEBUG] symbols_all.txt 讀到 {len(all_syms)} 檔，前5：{all_syms[:5]}")
 
-    sym_map = choose_symbol_suffix_bulk(all_syms)
+    sym_map = choose_symbol_suffix_bulk(all_syms, chunk=300)
+    print(f"[DEBUG] sym_map 成功對應 {len(sym_map)} 檔，前5：{list(sym_map.items())[:5]}")
+
     y_list = [sym_map[s] for s in all_syms if s in sym_map]
+    print(f"[DEBUG] y_list 最終可查 {len(y_list)} 檔，前5：{y_list[:5]}")
 
     poll = int(cfg.get("poll_seconds", 90))
     chunk = int(cfg.get("yahoo_quote_chunk", 50))
